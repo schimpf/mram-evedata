@@ -29,11 +29,10 @@ namespace :eve_data do
   desc "Import Eve Online Static Data Dump to EDD database"
   task :import => :environment do # {{{
 
-#    if ActiveRecord::Base.connection.table_exists? "invTypes"
-    if InvTypes.connection.table_exists? "invTypes"
+    if EveData::Type.connection.table_exists? "invTypes"
       puts "****************************************************************************"
       puts "you already seem to have imported the database dump (invTypes table exists)."
-      puts "if you really want to import again, manually delete the database '#{}'"
+      puts "if you really want to import again, manually delete the database '#{EveData::Type.connection.current_database}'"
       puts "****************************************************************************"
       return false
     end
@@ -41,7 +40,7 @@ namespace :eve_data do
     file_complete = Rails.root.join('data', EveData::DATAFILE)
     unless File.readable?(file_complete) then
       puts "data dump could not be found in #{file_complete}, trying to download"
-      Rake::Task["eve_data:download"].invoke
+      Rake::Task["app:eve_data:download"].invoke
     end
 
     unless cfg = ActiveRecord::Base.configurations['eve_data'] then
@@ -69,7 +68,25 @@ namespace :eve_data do
       puts (ret ? "success!" : "failed!")
     end
 
-    true
+    Rake::Task["app:eve_data:fixup"].invoke
+  end # }}}
+
+  desc "Make Data Dump useable"
+  task :fixup => :environment do # {{{
+    puts "Generating Ancestry Info for MarketGroup"
+    c = EveData::MarketGroup.connection
+    if c.column_exists?(EveData::MarketGroup.table_name, :parentGroupID)
+      c.rename_column(EveData::MarketGroup.table_name, :parentGroupID, :parent_id)
+      unless c.column_exists?(EveData::MarketGroup.table_name, :ancestry)
+        c.add_column(EveData::MarketGroup.table_name, :ancestry, :string)
+      end
+      unless c.column_exists?(EveData::MarketGroup.table_name, :ancestry_depth)
+        c.add_column(EveData::MarketGroup.table_name, :ancestry_depth, :integer, :default => 0)
+      end
+      EveData::MarketGroup.build_ancestry_from_parent_ids!
+      c.remove_column(EveData::MarketGroup.table_name, :parent_id)
+    end
+    puts " .. done"
   end # }}}
 end
 

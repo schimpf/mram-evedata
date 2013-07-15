@@ -17,7 +17,8 @@ Gem::Specification.new do |s|
   s.test_files = Dir["test/**/*"]
 
   s.add_dependency "rails", ">= 3.2"
+  s.add_dependency "ruby-progressbar"
+  s.add_dependency "ancestry", ">= 2.0.0"
 
   s.add_runtime_dependency 'mysql2'
-  s.add_runtime_dependency 'ruby-progressbar'
 end
