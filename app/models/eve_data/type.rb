@@ -2,32 +2,37 @@ module EveData
   class Type < EveData::EveDataDump
     self.table_name = 'invTypes'
 
-    belongs_to :group,                :class_name => 'Group', :foreign_key => :groupID, :primary_key => :groupID
-    belongs_to :graphic,              :class_name => 'Graphic', :foreign_key => :graphicID, :primary_key => :graphicID
-    belongs_to :race,                 :class_name => 'Race', :foreign_key => :raceID, :primary_key => :raceID
-    belongs_to :category,             :class_name => 'Category', :foreign_key => :categoryID, :primary_key => :categoryID
-    belongs_to :market_group,         :class_name => 'MarketGroup', :foreign_key => :marketGroupID, :primary_key => :marketGroupID
-    belongs_to :icon,                 :class_name => 'Icon', :foreign_key => :iconID, :primary_key => :iconID
+    belongs_to :group,                class_name: 'Group', foreign_key: :groupID, inverse_of: :types
+    belongs_to :graphic,              class_name: 'Graphic', foreign_key: :graphicID, primary_key: :graphicID
+    belongs_to :race,                 class_name: 'Race', foreign_key: :raceID, primary_key: :raceID
+    belongs_to :category,             class_name: 'Category', foreign_key: :categoryID, primary_key: :categoryID
+    belongs_to :market_group,         class_name: 'MarketGroup', foreign_key: :marketGroupID, primary_key: :marketGroupID
+    belongs_to :icon,                 class_name: 'Icon', foreign_key: :iconID, primary_key: :iconID
 
-    has_one :made_from_blueprint,     :class_name => 'BlueprintType', :foreign_key => :productTypeID
-    has_one :meta_type,               :class_name => 'MetaType', :foreign_key => :typeID
+    has_one :rel_bp_produces,         class_name: 'BlueprintType', foreign_key: :blueprintTypeID, inverse_of: :blueprint
+    has_one :produces,                class_name: 'Type', through: :rel_bp_produces, source: :product
+    has_one :rel_bp_product,          class_name: 'BlueprintType', foreign_key: :productTypeID, inverse_of: :product
+    has_one :produced_by,             class_name: 'Type', through: :rel_bp_product, source: :blueprint
 
-    has_many :meta_parent_for,        :class_name => 'MetaType', :foreign_key => :parentTypeID
-    has_many :materials,              :class_name => 'TypeMaterial', :foreign_key => :typeID
-    has_many :type_requirements,      :class_name => 'TypeRequirement', :foreign_key => :typeID
-    has_many :ec_prices,              :class_name => 'EcPriceData', :foreign_key => :typeID
+    has_one :meta_type,               class_name: 'MetaType', foreign_key: :typeID
 
-    has_many :eve_type_attrs,         :class_name => 'TypeAttribute', :foreign_key => :typeID
-    has_many :eve_attrs,              :class_name => 'AttributeType', :through => :eve_type_attrs
+    has_many :meta_parent_for,        class_name: 'MetaType', foreign_key: :parentTypeID
 
-    has_many :reaction_components,    :class_name => 'TypeReaction', :foreign_key => :reactionTypeID
+    has_many :materials,              class_name: 'TypeMaterial', foreign_key: :typeID
+    has_many :type_requirements,      class_name: 'TypeRequirement', foreign_key: :typeID
+    has_many :ec_prices,              class_name: 'EcPriceData', foreign_key: :typeID
+
+    has_many :eve_type_attrs,         class_name: 'TypeAttribute', foreign_key: :typeID
+    has_many :eve_attrs,              class_name: 'AttributeType', through: :eve_type_attrs
+
+    has_many :reaction_components,    class_name: 'TypeReaction', foreign_key: :reactionTypeID
 
     def ec_update(opts = {})
       EcPriceData.update_single(self, opts)
     end
 
     def ec_price(uopts = {})
-      defopts = { :system_id => 30000142, :mode => :sell, :type => :min }
+      defopts = { system_id: 30000142, mode: :sell, type: :min }
       opts = defopts.merge uopts
 
       ecp = self.ec_prices.freshest_nonstale
@@ -36,18 +41,18 @@ module EveData
     end
 
     def build_price(uopts = {})
-      return false unless self.made_from_blueprint
-      mybp = self.made_from_blueprint
+      return false unless self.rel_bp_product
+      mybp = self.rel_bp_product
 
       puts "debug: techlevel = #{mybp.techLevel}"
       case mybp.techLevel
       when 1
-        mybp.all_materials(:resolve => true).total_price / self.portionSize
+        mybp.all_materials(resolve: true).total_price / self.portionSize
       when 2
         t1_parent = self.meta_type.parent_type
-        t1_cost = t1_parent.made_from_blueprint.all_materials.(:resolve => true).total_price / t1_parent.portionSize
-  #puts mybp.all_materials(:resolve => true)
-  puts mybp.all_materials(:resolve => true, :me => -4)
+        t1_cost = t1_parent.rel_bp_product.all_materials.(resolve: true).total_price / t1_parent.portionSize
+  #puts mybp.all_materials(resolve: true)
+  puts mybp.all_materials(resolve: true, me: -4)
   #      t2_cost = mybp.all_materials.total_price / self.portionSize
 
       end
@@ -64,13 +69,19 @@ module EveData
         moon_mining_amount = moon_mining_attr ? (moon_mining_attr.valueInt ? moon_mining_attr.valueInt : moon_mining_attr.valueFloat) : 1
         real_quant = x.quantity * moon_mining_amount
         if x.input then
-          bill_in << MaterialBillEntry.new(:type => x.component_type, :quantity => real_quant)
+          bill_in << MaterialBillEntry.new(type: x.component_type, quantity: real_quant)
         else
-          bill_out << MaterialBillEntry.new(:type => x.component_type, :quantity => real_quant)
+          bill_out << MaterialBillEntry.new(type: x.component_type, quantity: real_quant)
         end
       end
       puts bill_in
       puts bill_out
+    end
+
+    class << self
+      def [](name)
+        self.find_by_typeName(name)
+      end
     end
   end
 end
